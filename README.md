@@ -10,9 +10,12 @@
 - 🔍 **Cross-file detection** - Find duplicate routes across your entire codebase
 - 🧩 **Router prefix resolution** - Correctly resolves Express router prefixes and nested routes (Phase 2)
 - 🚀 **Multi-framework support** - Works with Express, Fastify, NestJS, and generic HTTP methods
-- ⚡ **Fast & efficient** - Optimized for large projects with hundreds of routes
 - 🎯 **Auto-detection** - Automatically detects your framework from imports
-- 🔧 **Configurable** - Flexible options for path normalization and route matching
+- 🔧 **Path normalization** - Configurable normalization levels for parameter matching (Phase 3)
+- ⚙️ **Advanced configuration** - File patterns, method filtering, custom severity (Phase 4)
+- 🏷️ **NestJS decorators** - Full support for @Controller and HTTP method decorators (Phase 4)
+- 📦 **Framework presets** - Pre-configured settings for Express, Fastify, and NestJS (Phase 4)
+- ⚡ **Fast & efficient** - Optimized for large projects with hundreds of routes
 - 📝 **TypeScript first** - Written in TypeScript with full type safety
 
 ## Installation
@@ -57,6 +60,24 @@ export default [
 ];
 ```
 
+### Framework-Specific Presets (Phase 4)
+
+Use optimized presets for your framework:
+
+```javascript
+// For Express
+import routeGuard from 'eslint-plugin-route-guard';
+export default [routeGuard.configs.express];
+
+// For Fastify
+import routeGuard from 'eslint-plugin-route-guard';
+export default [routeGuard.configs.fastify];
+
+// For NestJS
+import routeGuard from 'eslint-plugin-route-guard';
+export default [routeGuard.configs.nestjs];
+```
+
 ### ESLint 8.x (Legacy Config)
 
 ```javascript
@@ -72,9 +93,9 @@ module.exports = {
 
 ## Supported Frameworks
 
-- **Express** - Route definitions via `app.get()`, `router.post()`, etc.
-- **Fastify** - Route definitions via `fastify.get()`, `server.post()`, etc.
-- **NestJS** - Decorator-based routes via `@Controller()`, `@Get()`, etc.
+- **Express** - Route definitions via `app.get()`, `router.post()`, etc. with full router prefix support
+- **Fastify** - Route definitions via `fastify.get()`, `server.post()`, etc. with multi-param syntax
+- **NestJS** - Decorator-based routes via `@Controller()`, `@Get()`, `@Post()`, etc. with global prefix support ✨ NEW!
 - **Generic** - Any HTTP method calls (get, post, put, delete, patch, etc.)
 
 ## Rules
@@ -83,7 +104,7 @@ module.exports = {
 
 Detects duplicate route definitions across files.
 
-**Status:** ✅ Available (Phase 1 MVP)
+**Status:** ✅ Available (Phases 1-4 Complete)
 
 **Examples of incorrect code:**
 
@@ -111,9 +132,9 @@ app.post('/users', createUser);
 app.get('/users', getUsers);
 app.get('/posts', getPosts);
 
-// ✅ Different parameter names (MVP treats as different)
+// ✅ Different parameter names (normalized with level 1+)
 app.get('/users/:id', getUser);
-app.get('/users/:userId', getUserById);
+app.get('/users/:userId', getUserById);  // OK with level 0, WARNING with level 1+
 
 // ✅ Router prefix resolution (Phase 2)
 const userRouter = express.Router();
@@ -124,7 +145,7 @@ app.use('/api/users', userRouter);       // Prefix: /api/users
 app.get('/api/posts/profile', getPostProfile);  // Different path
 ```
 
-**Note:** As of Phase 2, router prefixes are automatically resolved!
+**Note:** As of Phase 2, router prefixes are automatically resolved! As of Phase 3, path normalization detects parameter conflicts. As of Phase 4, NestJS decorators are fully supported!
 
 ## Configuration
 
@@ -134,22 +155,110 @@ app.get('/api/posts/profile', getPostProfile);  // Different path
 {
   rules: {
     'route-guard/no-duplicate-routes': ['error', {
+      // Framework configuration
       framework: 'express',    // Manual framework override
-      maxRouterDepth: 5,       // Maximum router nesting depth
-      debug: false             // Enable debug logging
+      
+      // Path normalization (Phase 3)
+      pathNormalization: {
+        level: 1,              // 0=none, 1=params, 2=params+constraints
+        warnOnStaticVsDynamic: true,
+        preserveConstraints: true
+      },
+      
+      // Router configuration (Phase 2)
+      routerPrefixes: {
+        enabled: true,
+        maxDepth: 5
+      },
+      
+      // File filtering (Phase 4)
+      ignorePatterns: ['**/*.test.ts', '**/generated/**'],
+      includePatterns: ['src/**/*.ts'],
+      
+      // Method filtering (Phase 4)
+      ignoreMethods: ['OPTIONS', 'HEAD'],
+      
+      // Error reporting (Phase 4)
+      severity: 'error',       // 'error' or 'warn'
+      
+      // NestJS configuration (Phase 4)
+      nestjs: {
+        globalPrefix: 'api'    // Global prefix for NestJS routes
+      },
+      
+      // Debug mode
+      debug: false
     }]
   }
 }
 ```
 
+#### Framework Options
+
 **`framework`** (optional): `'express' | 'fastify' | 'nestjs' | 'generic'`
 - Manually specify framework instead of auto-detection
 - Default: Auto-detected from imports
 
-**`maxRouterDepth`** (optional): `number` (1-10)
+#### Path Normalization Options (Phase 3)
+
+**`pathNormalization.level`** (optional): `0 | 1 | 2`
+- `0`: No normalization - `/users/:id` ≠ `/users/:userId`
+- `1`: Normalize parameter names - `/users/:id` = `/users/:userId`
+- `2`: Normalize parameters + constraints - `/users/:id(\\d+)` = `/users/:userId(\\d+)`
+- Default: `1`
+
+**`pathNormalization.warnOnStaticVsDynamic`** (optional): `boolean`
+- Warn when static and dynamic segments conflict (e.g., `/users/admin` vs `/users/:id`)
+- Default: `true`
+
+**`pathNormalization.preserveConstraints`** (optional): `boolean`
+- When `true`, `/users/:id(\\d+)` ≠ `/users/:id([a-z]+)`
+- When `false`, both are treated as identical
+- Default: `true`
+
+#### Router Configuration (Phase 2)
+
+**`routerPrefixes.enabled`** (optional): `boolean`
+- Enable router prefix tracking and resolution
+- Default: `true`
+
+**`routerPrefixes.maxDepth`** (optional): `number` (1-10)
 - Maximum allowed router nesting depth for prefix resolution
 - Default: `5`
-- When exceeded, a warning is emitted and prefix resolution stops
+
+#### File Filtering (Phase 4)
+
+**`ignorePatterns`** (optional): `string[]`
+- Glob patterns for files to skip
+- Default: `[]`
+- Example: `['**/*.test.ts', '**/generated/**', '**/__mocks__/**']`
+
+**`includePatterns`** (optional): `string[]`
+- Only check files matching these glob patterns
+- Default: `[]` (check all files)
+- Example: `['src/**/*.ts', 'routes/**/*.js']`
+
+#### Method Filtering (Phase 4)
+
+**`ignoreMethods`** (optional): `string[]`
+- HTTP methods to ignore (case-insensitive)
+- Default: `[]`
+- Example: `['OPTIONS', 'HEAD']`
+
+#### Error Reporting (Phase 4)
+
+**`severity`** (optional): `'error' | 'warn'`
+- Report duplicates as errors or warnings
+- Default: `'error'`
+
+#### NestJS Configuration (Phase 4)
+
+**`nestjs.globalPrefix`** (optional): `string`
+- Global prefix applied to all NestJS routes
+- Default: `''` (no global prefix)
+- Example: `'api'` → `/api/users/profile`
+
+#### Debug Mode
 
 **`debug`** (optional): `boolean`
 - Enable detailed debug logging
@@ -174,9 +283,118 @@ Output example:
 [no-duplicate-routes] Registering route: GET /users at src/routes.ts:5:3
 ```
 
+## Advanced Examples
+
+### Path Normalization (Phase 3)
+
+```javascript
+// Configure normalization level
+{
+  rules: {
+    'route-guard/no-duplicate-routes': ['error', {
+      pathNormalization: {
+        level: 1  // Normalize parameter names
+      }
+    }]
+  }
+}
+```
+
+```javascript
+// ❌ Duplicate with level 1+ normalization
+app.get('/users/:id', getUser);
+app.get('/users/:userId', getUserById);  // Warning: Parameter name differs
+
+// ❌ Constraint conflict with level 2 normalization
+app.get('/posts/:id(\\d+)', getPost);       // Only numbers
+app.get('/posts/:postId([a-z]+)', getPost); // Only letters - Conflict!
+
+// ⚠️ Static vs dynamic conflict warning
+app.get('/users/admin', getAdmin);      // Static path
+app.get('/users/:id', getUser);         // Dynamic path - Warning!
+```
+
+### NestJS Support (Phase 4)
+
+```typescript
+// NestJS controller with decorators
+@Controller('users')
+export class UsersController {
+  @Get(':id')
+  getUser() {}  // Route: GET /users/:id
+  
+  @Post()
+  createUser() {}  // Route: POST /users
+  
+  @Delete(':id')
+  deleteUser() {}  // Route: DELETE /users/:id
+}
+
+// With global prefix configuration
+{
+  rules: {
+    'route-guard/no-duplicate-routes': ['error', {
+      nestjs: {
+        globalPrefix: 'api'  // All routes prefixed with /api
+      }
+    }]
+  }
+}
+// Effective routes: GET /api/users/:id, POST /api/users, DELETE /api/users/:id
+```
+
+### File and Method Filtering (Phase 4)
+
+```javascript
+{
+  rules: {
+    'route-guard/no-duplicate-routes': ['error', {
+      // Ignore test files and generated code
+      ignorePatterns: [
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        '**/generated/**',
+        '**/__mocks__/**'
+      ],
+      
+      // Only check specific directories
+      includePatterns: [
+        'src/routes/**',
+        'src/controllers/**'
+      ],
+      
+      // Ignore OPTIONS and HEAD methods
+      ignoreMethods: ['OPTIONS', 'HEAD'],
+      
+      // Report as warnings instead of errors
+      severity: 'warn'
+    }]
+  }
+}
+```
+
+### Framework Presets (Phase 4)
+
+```javascript
+// Use Express preset (includes router prefix tracking)
+import routeGuard from 'eslint-plugin-route-guard';
+
+export default [
+  routeGuard.configs.express,
+  {
+    // Override specific options if needed
+    rules: {
+      'route-guard/no-duplicate-routes': ['error', {
+        ignorePatterns: ['**/*.test.ts']
+      }]
+    }
+  }
+];
+```
+
 ## Current Capabilities
 
-**Phase 1 + Phase 2 (Current) Features:**
+**Phase 1-4 (Current) Features:**
 
 ✅ **Literal string paths** - `'/users'`, `'/api/posts'`
 ✅ **Simple template literals** - `` `/users` ``
@@ -187,11 +405,19 @@ Output example:
 ✅ **Nested router prefixes** - Up to 5 levels deep by default (Phase 2)
 ✅ **Cross-file router tracking** - Exported/imported routers resolved (Phase 2)
 ✅ **Edge case handling** - Empty prefixes, trailing slashes, multiple slashes (Phase 2)
+✅ **Path normalization** - Configurable parameter name normalization (Phase 3)
+✅ **Constraint detection** - Detect conflicts in regex constraints (Phase 3)
+✅ **Static vs dynamic conflicts** - Warn on `/users/admin` vs `/users/:id` (Phase 3)
+✅ **NestJS decorators** - Full @Controller, @Get, @Post, etc. support (Phase 4)
+✅ **NestJS global prefix** - Apply global prefix to all NestJS routes (Phase 4)
+✅ **File filtering** - Ignore/include patterns with glob support (Phase 4)
+✅ **Method filtering** - Skip specific HTTP methods (Phase 4)
+✅ **Configurable severity** - Report as error or warning (Phase 4)
+✅ **Framework presets** - Pre-configured settings for each framework (Phase 4)
 
 **Current Limitations:**
 
 ❌ **Dynamic prefixes** - `app.use(variable, router)` skipped (static analysis limitation)
-❌ **Path parameters not normalized** - `/users/:id` vs `/users/:userId` treated as different (Phase 3)
 ❌ **Dynamic paths skipped** - Template literals with expressions ignored
 ❌ **Computed paths skipped** - `'/api' + '/users'` not analyzed
 ❌ **Conditional routes** - Routes inside if statements may be missed
@@ -199,10 +425,9 @@ Output example:
 ❌ **Deep nesting** - Router depth beyond limit (default 5) not resolved
 
 **Future phases will add:**
-- Path parameter normalization - `:id` vs `:userId` (Phase 3)
-- Static vs dynamic route conflicts (Phase 3)
-- NestJS decorator enhancements (Phase 4)
-- Advanced configuration options (Phase 4)
+- Performance optimization and caching (Phase 5)
+- Developer experience improvements (Phase 6)
+- Production hardening and edge cases (Phase 7)
 
 ## Development
 
@@ -212,40 +437,51 @@ This project is under active development. Phase 0 (repository setup) is complete
 
 - ✅ **Phase 0** - Repository bootstrap, tooling setup - **COMPLETE**
 - ✅ **Phase 1** - Basic duplicate detection (MVP) - **COMPLETE**
-- ✅ **Phase 2** - Router awareness & prefix resolution - **COMPLETE** ✨ NEW!
-- ⏳ **Phase 3** - Advanced path handling & normalization
-- ⏳ **Phase 4** - Multi-framework support & configuration
+- ✅ **Phase 2** - Router awareness & prefix resolution - **COMPLETE**
+- ✅ **Phase 3** - Advanced path handling & normalization - **COMPLETE** ✨
+- ✅ **Phase 4** - Multi-framework support & configuration - **COMPLETE** ✨
 - ⏳ **Phase 5** - Performance optimization
 - ⏳ **Phase 6** - Developer experience & tooling
 - ⏳ **Phase 7** - Production hardening
 
 See [project-planning-v2.md](.agent/project-planning-v2.md) for detailed roadmap.
 
-### Phase 2 Metrics (Current)
+### Current Metrics (Phase 4)
 
-- **Tests:** 159 passing (137 total + 22 Phase 2 integration)
+- **Tests:** 225 passing across 9 test files
   - Path utilities: 30 tests
-  - Router tracking: 20 tests
-  - Route tracking: 11 tests
+  - Path normalization: 52 tests (Phase 3)
+  - Router tracking: 20 tests  - Route tracking: 11 tests
   - Path extraction: 20 tests
   - Framework detection: 15 tests
+  - NestJS detector: 14 tests (Phase 4)
   - Rule integration: 48 tests
   - Smoke tests: 15 tests
 - **Coverage:** >90% overall (targeting 95%+)
 - **Build:** CJS + ESM outputs
 - **Performance:** <500ms for 1000+ routes with nested routers
 
-### Phase 2 Highlights
+### Phase 3 Highlights (Path Normalization)
 
 **New Capabilities:**
-- 🧩 Router creation detection (Express, Fastify)
-- 🧩 Prefix application tracking via `app.use()`
-- 🧩 Nested router prefix chains (up to 5 levels)
-- 🧩 Effective path computation with normalization
-- 🧩 Cross-file router export/import tracking (heuristic)
-- 🧩 Max depth enforcement with warnings
-- 🧩 Dynamic prefix detection and graceful skipping
-- 🧩 Edge case handling (empty, root, trailing slashes)
+- 🎯 Configurable normalization levels (0, 1, 2)
+- 🎯 Parameter name normalization (`/users/:id` = `/users/:userId`)
+- 🎯 Constraint detection and comparison
+- 🎯 Static vs dynamic conflict warnings
+- 🎯 LRU cache for performance (1000 entries)
+- 🎯 Multi-framework syntax support (Express, Fastify, NestJS)
+- 🎯 Wildcard segment detection
+
+### Phase 4 Highlights (Multi-Framework & Configuration)
+
+**New Capabilities:**
+- 🏷️ Full NestJS decorator support (@Controller, @Get, @Post, etc.)
+- 🏷️ NestJS global prefix configuration
+- 🔧 File filtering with glob patterns (ignore/include)
+- 🔧 HTTP method filtering (ignoreMethods)
+- 🔧 Configurable severity (error vs warn)
+- 🔧 Framework-specific preset configurations
+- 🔧 Comprehensive configuration schema
 
 ### Building
 
