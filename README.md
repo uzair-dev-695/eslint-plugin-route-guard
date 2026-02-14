@@ -15,7 +15,8 @@
 - ⚙️ **Advanced configuration** - File patterns, method filtering, custom severity (Phase 4)
 - 🏷️ **NestJS decorators** - Full support for @Controller and HTTP method decorators (Phase 4)
 - 📦 **Framework presets** - Pre-configured settings for Express, Fastify, and NestJS (Phase 4)
-- ⚡ **Fast & efficient** - Optimized for large projects with hundreds of routes
+- ⚡ **High performance** - Optimized caching for large codebases with 1000+ routes (Phase 5)
+- 💾 **Smart caching** - LRU caches for path normalization, framework detection, and router prefixes (Phase 5)
 - 📝 **TypeScript first** - Written in TypeScript with full type safety
 
 ## Installation
@@ -414,6 +415,9 @@ export default [
 ✅ **Method filtering** - Skip specific HTTP methods (Phase 4)
 ✅ **Configurable severity** - Report as error or warning (Phase 4)
 ✅ **Framework presets** - Pre-configured settings for each framework (Phase 4)
+✅ **Performance optimized** - Centralized caching system with LRU eviction (Phase 5)
+✅ **Large codebase ready** - Handles 1000+ routes efficiently (<5s) (Phase 5)
+✅ **Memory efficient** - Cache overhead <1MB with automatic cleanup (Phase 5)
 
 **Current Limitations:**
 
@@ -425,7 +429,6 @@ export default [
 ❌ **Deep nesting** - Router depth beyond limit (default 5) not resolved
 
 **Future phases will add:**
-- Performance optimization and caching (Phase 5)
 - Developer experience improvements (Phase 6)
 - Production hardening and edge cases (Phase 7)
 
@@ -440,26 +443,33 @@ This project is under active development. Phase 0 (repository setup) is complete
 - ✅ **Phase 2** - Router awareness & prefix resolution - **COMPLETE**
 - ✅ **Phase 3** - Advanced path handling & normalization - **COMPLETE** ✨
 - ✅ **Phase 4** - Multi-framework support & configuration - **COMPLETE** ✨
-- ⏳ **Phase 5** - Performance optimization
+- ✅ **Phase 5** - Performance optimization & scale - **COMPLETE** ✨
 - ⏳ **Phase 6** - Developer experience & tooling
 - ⏳ **Phase 7** - Production hardening
 
 See [project-planning-v2.md](.agent/project-planning-v2.md) for detailed roadmap.
 
-### Current Metrics (Phase 4)
+### Current Metrics (Phase 5)
 
-- **Tests:** 225 passing across 9 test files
+- **Tests:** 249 passing across 11 test files
   - Path utilities: 30 tests
   - Path normalization: 52 tests (Phase 3)
-  - Router tracking: 20 tests  - Route tracking: 11 tests
+  - Router tracking: 20 tests
+  - Route tracking: 11 tests
   - Path extraction: 20 tests
   - Framework detection: 15 tests
   - NestJS detector: 14 tests (Phase 4)
+  - Performance cache: 15 tests (Phase 5)
+  - Performance benchmarks: 9 tests (Phase 5)
   - Rule integration: 48 tests
   - Smoke tests: 15 tests
 - **Coverage:** >90% overall (targeting 95%+)
 - **Build:** CJS + ESM outputs
-- **Performance:** <500ms for 1000+ routes with nested routers
+- **Performance:** 
+  - 50 routes: <1s
+  - 500 routes: <3s
+  - 1000 routes: <5s
+  - Cache overhead: <1MB
 
 ### Phase 3 Highlights (Path Normalization)
 
@@ -482,6 +492,19 @@ See [project-planning-v2.md](.agent/project-planning-v2.md) for detailed roadmap
 - 🔧 Configurable severity (error vs warn)
 - 🔧 Framework-specific preset configurations
 - 🔧 Comprehensive configuration schema
+
+### Phase 5 Highlights (Performance Optimization & Scale)
+
+**New Capabilities:**
+- ⚡ Centralized caching system with LRU eviction
+- ⚡ Path normalization cache (2000 entries)
+- ⚡ Framework detection cache (500 entries)
+- ⚡ Router prefix cache (1000 entries)
+- ⚡ Automatic cache clearing in watch mode
+- ⚡ Cache statistics tracking (hits, misses, hit rate)
+- ⚡ Memory-efficient implementation (<1MB overhead)
+- ⚡ Performance benchmarks with automated regression tests
+- ⚡ Large project fixture generator for testing
 
 ### Building
 

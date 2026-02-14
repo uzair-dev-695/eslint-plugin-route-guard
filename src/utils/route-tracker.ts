@@ -4,10 +4,8 @@
  */
 
 import type { TSESTree } from '@typescript-eslint/utils';
+import { clearAllCaches } from './performance-cache';
 
-/**
- * Route registration information
- */
 export interface RouteRegistration {
   /** HTTP method (uppercase: GET, POST, etc.) */
   method: string;
@@ -43,6 +41,7 @@ export class RouteTracker {
     if (this.currentLintId !== lintId) {
       this.routes.clear();
       this.currentLintId = lintId;
+      clearAllCaches();
     }
   }
 
@@ -87,6 +86,7 @@ export class RouteTracker {
    */
   clear(): void {
     this.routes.clear();
+    clearAllCaches();
     this.currentLintId = null;
   }
 }

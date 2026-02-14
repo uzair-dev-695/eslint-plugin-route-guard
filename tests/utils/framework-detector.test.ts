@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FrameworkDetector } from '../../src/utils/framework-detector';
+import { clearAllCaches } from '../../src/utils/performance-cache';
 import type { TSESTree } from '@typescript-eslint/utils';
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
@@ -7,6 +8,7 @@ describe('FrameworkDetector', () => {
   let detector: FrameworkDetector;
 
   beforeEach(() => {
+    clearAllCaches();
     detector = new FrameworkDetector();
   });
 

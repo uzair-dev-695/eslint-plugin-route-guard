@@ -252,14 +252,14 @@ describe('path-normalizer', () => {
       expect(getNormalizationCacheSize()).toBe(0);
     });
 
-    it('should implement LRU eviction at 1000 entries', () => {
+    it('should implement LRU eviction at 2000 entries', () => {
       clearNormalizationCache();
       
-      for (let i = 0; i < 1100; i++) {
+      for (let i = 0; i < 2100; i++) {
         normalizePathWithLevel(`/path${i}/:id`, 1);
       }
       
-      expect(getNormalizationCacheSize()).toBeLessThanOrEqual(1000);
+      expect(getNormalizationCacheSize()).toBeLessThanOrEqual(2000);
     });
   });
 

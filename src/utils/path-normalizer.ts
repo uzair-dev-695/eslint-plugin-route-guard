@@ -1,7 +1,4 @@
-/**
- * Path normalization utilities for advanced route comparison
- * Handles parameter normalization, conflict detection, and framework-specific syntax
- */
+import { pathNormalizationCache } from './performance-cache';
 
 export type NormalizationLevel = 0 | 1 | 2;
 
@@ -33,46 +30,6 @@ export interface ConflictInfo {
   segment1?: SegmentInfo;
   segment2?: SegmentInfo;
 }
-
-class LRUCache<K, V> {
-  private cache = new Map<K, V>();
-  private maxSize: number;
-
-  constructor(maxSize = 1000) {
-    this.maxSize = maxSize;
-  }
-
-  get(key: K): V | undefined {
-    const value = this.cache.get(key);
-    if (value !== undefined) {
-      this.cache.delete(key);
-      this.cache.set(key, value);
-    }
-    return value;
-  }
-
-  set(key: K, value: V): void {
-    if (this.cache.has(key)) {
-      this.cache.delete(key);
-    } else if (this.cache.size >= this.maxSize) {
-      const firstKey = this.cache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.cache.delete(firstKey);
-      }
-    }
-    this.cache.set(key, value);
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-
-  get size(): number {
-    return this.cache.size;
-  }
-}
-
-const normalizationCache = new LRUCache<string, string>(1000);
 
 export function parsePathSegment(segment: string): SegmentInfo {
   if (!segment) {
@@ -158,7 +115,7 @@ export function normalizePathWithLevel(
   }
 
   const cacheKey = `${path}:${level}:${preserveConstraints}`;
-  const cached = normalizationCache.get(cacheKey);
+  const cached = pathNormalizationCache.get(cacheKey);
   if (cached) {
     return cached;
   }
@@ -183,7 +140,7 @@ export function normalizePathWithLevel(
     ? `/${normalizedSegments.join('/')}`
     : '/';
 
-  normalizationCache.set(cacheKey, result);
+  pathNormalizationCache.set(cacheKey, result);
   return result;
 }
 
@@ -295,9 +252,9 @@ export function extractParamConstraint(segment: string): RegExp | null {
 }
 
 export function clearNormalizationCache(): void {
-  normalizationCache.clear();
+  pathNormalizationCache.clear();
 }
 
 export function getNormalizationCacheSize(): number {
-  return normalizationCache.size;
+  return pathNormalizationCache.getStats().size;
 }
