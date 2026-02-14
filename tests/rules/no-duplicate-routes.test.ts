@@ -415,4 +415,467 @@ describe('no-duplicate-routes', () => {
       });
     });
   });
+
+  describe('Phase 2: Router Prefix Resolution', () => {
+    describe('Single Router with Prefix', () => {
+      it('resolves single prefix correctly', () => {
+        ruleTester.run('single-prefix', rule, {
+          valid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                const app = express();
+                
+                router.get('/users', handler);
+                app.use('/api', router);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+
+      it('detects duplicate with prefix resolution', () => {
+        ruleTester.run('duplicate-with-prefix', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                const app = express();
+                
+                router.get('/users', handler);
+                app.use('/api', router);
+                app.get('/api/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('handles Router() imported function', () => {
+        ruleTester.run('imported-router', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import { Router } from 'express';
+                const userRouter = Router();
+                
+                userRouter.get('/profile', handler);
+                app.use('/users', userRouter);
+                app.get('/users/profile', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('allows different paths with same prefix', () => {
+        ruleTester.run('different-paths-with-prefix', rule, {
+          valid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/users', handler);
+                router.get('/posts', handler);
+                app.use('/api', router);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+
+      it('handles multiple routers with different prefixes', () => {
+        ruleTester.run('multiple-routers', rule, {
+          valid: [
+            {
+              code: `
+                import express from 'express';
+                const userRouter = express.Router();
+                const postRouter = express.Router();
+                
+                userRouter.get('/list', handler);
+                postRouter.get('/list', handler);
+                
+                app.use('/users', userRouter);
+                app.use('/posts', postRouter);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+    });
+
+    describe('Nested Router Prefixes', () => {
+      it('resolves nested prefixes (depth 2)', () => {
+        ruleTester.run('nested-prefix-depth-2', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router1 = express.Router();
+                const router2 = express.Router();
+                
+                router2.get('/users', handler);
+                router1.use('/v1', router2);
+                app.use('/api', router1);
+                
+                app.get('/api/v1/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('resolves nested prefixes (depth 3)', () => {
+        ruleTester.run('nested-prefix-depth-3', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const r1 = express.Router();
+                const r2 = express.Router();
+                const r3 = express.Router();
+                
+                r3.get('/profile', handler);
+                r2.use('/users', r3);
+                r1.use('/v1', r2);
+                app.use('/api', r1);
+                
+                app.get('/api/v1/users/profile', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('allows different endpoints in nested structure', () => {
+        ruleTester.run('nested-different-endpoints', rule, {
+          valid: [
+            {
+              code: `
+                import express from 'express';
+                const router1 = express.Router();
+                const router2 = express.Router();
+                
+                router2.get('/users', handler);
+                router1.use('/v1', router2);
+                app.use('/api', router1);
+                
+                app.get('/api/v2/users', handler);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+
+      it('handles complex nested router chains', () => {
+        ruleTester.run('complex-nested', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const apiRouter = express.Router();
+                const v1Router = express.Router();
+                const userRouter = express.Router();
+                
+                userRouter.get('/:id', handler);
+                v1Router.use('/users', userRouter);
+                apiRouter.use('/v1', v1Router);
+                app.use('/api', apiRouter);
+                
+                app.get('/api/v1/users/:id', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('respects max nesting depth limit', () => {
+        ruleTester.run('max-depth-limit', rule, {
+          valid: [
+            {
+              // This should NOT detect duplicate because depth > 5
+              code: `
+                import express from 'express';
+                const r1 = express.Router();
+                const r2 = express.Router();
+                const r3 = express.Router();
+                const r4 = express.Router();
+                const r5 = express.Router();
+                const r6 = express.Router();
+                
+                r6.get('/endpoint', handler);
+                r5.use('/level5', r6);
+                r4.use('/level4', r5);
+                r3.use('/level3', r4);
+                r2.use('/level2', r3);
+                r1.use('/level1', r2);
+                app.use('/api', r1);
+                
+                // This won't be detected as duplicate (exceeds depth)
+                app.get('/api/level1/level2/level3/level4/level5/endpoint', handler);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+    });
+
+    describe('Edge Cases - Prefixes', () => {
+      it('handles empty string prefix', () => {
+        ruleTester.run('empty-prefix', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/users', handler);
+                app.use('', router);
+                app.get('/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('handles root prefix', () => {
+        ruleTester.run('root-prefix', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/users', handler);
+                app.use('/', router);
+                app.get('/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('handles trailing slashes in prefix', () => {
+        ruleTester.run('trailing-slash-prefix', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/users', handler);
+                app.use('/api/', router);
+                app.get('/api/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('handles leading slash missing in route', () => {
+        ruleTester.run('missing-leading-slash', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('users', handler);
+                app.use('/api', router);
+                app.get('/api/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('handles multiple consecutive slashes', () => {
+        ruleTester.run('multiple-slashes', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('//users', handler);
+                app.use('/api//', router);
+                app.get('/api/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+    });
+
+    describe('Dynamic Prefix Handling', () => {
+      it('skips dynamic prefix (variable)', () => {
+        ruleTester.run('dynamic-prefix-variable', rule, {
+          valid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                const apiPrefix = '/api';
+                
+                router.get('/users', handler);
+                app.use(apiPrefix, router); // Dynamic - should skip
+                
+                // This won't be detected as duplicate (prefix not resolved)
+                app.get('/api/users', handler);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+
+      it('skips dynamic prefix (expression)', () => {
+        ruleTester.run('dynamic-prefix-expression', rule, {
+          valid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/users', handler);
+                app.use(process.env.PREFIX, router);
+                
+                app.get('/api/users', handler);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+
+      it('handles template literal prefix without expressions', () => {
+        ruleTester.run('template-literal-prefix', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/users', handler);
+                app.use(\`/api\`, router);
+                app.get('/api/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+    });
+
+    describe('Router Without Prefix', () => {
+      it('detects duplicates on unprefixed router', () => {
+        ruleTester.run('unprefixed-router-duplicate', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/users', handler);
+                router.get('/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('allows router used before prefix applied', () => {
+        ruleTester.run('router-used-before-prefix', rule, {
+          valid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/users', handler);
+                // Router has routes but prefix not applied yet
+                app.get('/users', handler);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+    });
+
+    describe('Multiple Routers Edge Cases', () => {
+      it('handles same prefix on different routers', () => {
+        ruleTester.run('same-prefix-different-routers', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const router1 = express.Router();
+                const router2 = express.Router();
+                
+                router1.get('/users', handler);
+                router2.get('/users', handler);
+                
+                app.use('/api', router1);
+                app.use('/api', router2);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('handles router reused with different prefix', () => {
+        ruleTester.run('router-reused', rule, {
+          valid: [
+            {
+              code: `
+                import express from 'express';
+                const router = express.Router();
+                
+                router.get('/list', handler);
+                
+                app.use('/users', router);
+                app.use('/posts', router);
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+    });
+  });
 });

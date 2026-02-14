@@ -7,6 +7,8 @@ import { ESLintUtils, TSESTree } from '@typescript-eslint/utils';
 import { globalTracker, type RouteRegistration } from '../utils/route-tracker.js';
 import { extractLiteralPath, isValidPath } from '../utils/path-extractor.js';
 import { frameworkDetector, type FrameworkContext } from '../utils/framework-detector.js';
+import { globalRouterTracker } from '../utils/router-tracker.js';
+import { joinPaths } from '../utils/path-utils.js';
 
 /**
  * Rule options interface
@@ -14,6 +16,8 @@ import { frameworkDetector, type FrameworkContext } from '../utils/framework-det
 export interface RuleOptions {
   /** Manual framework override */
   framework?: 'express' | 'fastify' | 'nestjs' | 'generic';
+  /** Maximum router nesting depth */
+  maxRouterDepth?: number;
   /** Enable debug logging */
   debug?: boolean;
 }
@@ -57,6 +61,11 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
             type: 'string',
             enum: ['express', 'fastify', 'nestjs', 'generic'],
           },
+          maxRouterDepth: {
+            type: 'number',
+            minimum: 1,
+            maximum: 10,
+          },
           debug: {
             type: 'boolean',
           },
@@ -65,10 +74,11 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
       },
     ],
   },
-  defaultOptions: [{ debug: false }],
+  defaultOptions: [{ debug: false, maxRouterDepth: 5 }],
   create(context) {
     const options = context.options[0] || {};
     const debug = options.debug || false;
+    const maxRouterDepth = options.maxRouterDepth || 5;
     
     // Generate unique lint ID for this run
     const lintId = `${Date.now()}-${Math.random()}`;
@@ -110,21 +120,86 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
     }
 
     /**
-     * Process a route registration call expression
+     * Get router identifier from call expression object
+     * Returns the identifier name if it's a simple identifier
      */
+    function getRouterIdentifier(node: TSESTree.MemberExpression): string | null {
+      if (node.object.type === 'Identifier') {
+        return node.object.name;
+      }
+      return null;
+    }
+
+    function processRouterCreation(node: TSESTree.VariableDeclarator): void {
+      if (!frameworkContext) return;
+      
+      const framework = frameworkContext.type === 'nestjs' ? 'generic' : frameworkContext.type;
+      const detected = globalRouterTracker.detectRouterCreation(node, framework);
+      
+      if (detected && node.id.type === 'Identifier') {
+        debugLog(`Detected router creation: ${node.id.name}`);
+      }
+    }
+
+    function processPrefixApplication(node: TSESTree.CallExpression): void {
+      const prefixInfo = globalRouterTracker.detectPrefixApplication(node);
+      
+      if (!prefixInfo) return;
+
+      const { targetRouter, prefix, isDynamic } = prefixInfo;
+
+      if (isDynamic) {
+        debugLog('Skipping dynamic prefix (variable or expression)');
+        return;
+      }
+
+      if (targetRouter && prefix) {
+        const applied = globalRouterTracker.applyPrefix(targetRouter, prefix);
+        if (applied) {
+          debugLog(`Applied prefix '${prefix}' to router '${targetRouter}'`);
+        }
+      }
+    }
+
+    function processExportDeclaration(node: TSESTree.ExportNamedDeclaration): void {
+      if (node.declaration?.type === 'VariableDeclaration') {
+        for (const declarator of node.declaration.declarations) {
+          if (declarator.id.type === 'Identifier') {
+            globalRouterTracker.markExported(declarator.id.name);
+            debugLog(`Marked router as exported: ${declarator.id.name}`);
+          }
+        }
+      }
+    }
+
+    function processImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      if (node.source.type === 'Literal' && typeof node.source.value === 'string') {
+        const from = node.source.value;
+        
+        for (const specifier of node.specifiers) {
+          if (specifier.type === 'ImportSpecifier') {
+            const importedName = specifier.imported.type === 'Identifier' 
+              ? specifier.imported.name 
+              : specifier.imported.value;
+            const localName = specifier.local.name;
+            
+            globalRouterTracker.registerImport(importedName, localName, from);
+            debugLog(`Registered import: ${importedName} as ${localName} from ${from}`);
+          }
+        }
+      }
+    }
+
     function processRouteCall(node: TSESTree.CallExpression): void {
-      // Must be a member expression: app.get(), router.post(), etc.
       if (node.callee.type !== 'MemberExpression') {
         return;
       }
 
-      // Extract method name (get, post, etc.)
       const method = extractMethodName(node.callee);
       if (!method) {
         return;
       }
 
-      // Extract path from first argument
       const firstArg = node.arguments[0];
       if (!firstArg) {
         debugLog(`Skipped route: ${method} - no arguments provided`);
@@ -133,7 +208,6 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
 
       const path = extractLiteralPath(firstArg, debug);
       if (!path) {
-        // Not a literal path - skip (dynamic path)
         return;
       }
 
@@ -142,11 +216,22 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
         return;
       }
 
-      // Create route registration
+      let effectivePath = path;
+      const routerIdentifier = getRouterIdentifier(node.callee);
+      
+      if (routerIdentifier) {
+        const routerPrefix = globalRouterTracker.getEffectivePrefix(routerIdentifier);
+        if (routerPrefix) {
+          effectivePath = joinPaths(routerPrefix, path);
+          debugLog(`Router '${routerIdentifier}' has prefix: ${routerPrefix}`);
+          debugLog(`Effective path: ${path} -> ${effectivePath}`);
+        }
+      }
+
       const loc = node.loc;
       const route: RouteRegistration = {
         method,
-        path,
+        path: effectivePath,
         file: filename,
         line: loc.start.line,
         column: loc.start.column,
@@ -154,16 +239,14 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
         framework: frameworkContext?.type,
       };
 
-      debugLog(`Registering route: ${method} ${path} at ${filename}:${route.line}:${route.column}`);
+      debugLog(`Registering route: ${method} ${effectivePath} at ${filename}:${route.line}:${route.column}`);
 
-      // Register route and check for duplicates
       const existingRoute = globalTracker.register(route);
       
       if (existingRoute) {
-        // Duplicate found!
         const firstLocation = `${existingRoute.file}:${existingRoute.line}:${existingRoute.column}`;
         
-        debugLog(`DUPLICATE DETECTED: ${method} ${path}`);
+        debugLog(`DUPLICATE DETECTED: ${method} ${effectivePath}`);
         debugLog(`  First: ${firstLocation}`);
         debugLog(`  Second: ${filename}:${route.line}:${route.column}`);
 
@@ -172,7 +255,7 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
           messageId: 'duplicateRoute',
           data: {
             method,
-            path,
+            path: effectivePath,
             firstLocation,
           },
         });
@@ -180,11 +263,12 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
     }
 
     return {
-      /**
-       * Reset tracker and detect framework at the start of each file
-       */
       Program(node) {
         globalTracker.reset(lintId);
+        globalRouterTracker.resetFile(filename);
+        globalRouterTracker.options.maxDepth = maxRouterDepth;
+        globalRouterTracker.options.debug = debug;
+        
         debugLog(`Initialized lint run: ${lintId}`);
         debugLog(`Processing file: ${filename}`);
         
@@ -198,10 +282,20 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
         }
       },
 
-      /**
-       * Process all call expressions to detect route registrations
-       */
+      VariableDeclarator(node) {
+        processRouterCreation(node);
+      },
+
+      ExportNamedDeclaration(node) {
+        processExportDeclaration(node);
+      },
+
+      ImportDeclaration(node) {
+        processImportDeclaration(node);
+      },
+
       CallExpression(node) {
+        processPrefixApplication(node);
         processRouteCall(node);
       },
     };
