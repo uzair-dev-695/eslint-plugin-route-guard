@@ -36,3 +36,33 @@ export function isRootPath(path: string): boolean {
 export function getPathSegments(path: string): string[] {
   return path.split('/').filter(Boolean);
 }
+
+export function isStaticSegment(segment: string): boolean {
+  return !segment.startsWith(':') && segment !== '*' && segment !== '**';
+}
+
+export function isParamSegment(segment: string): boolean {
+  return segment.startsWith(':');
+}
+
+export function isWildcardSegment(segment: string): boolean {
+  return segment === '*' || segment === '**';
+}
+
+export function extractParamConstraint(segment: string): RegExp | null {
+  if (!segment.startsWith(':')) {
+    return null;
+  }
+
+  const match = segment.match(/^:[^(]+(\(.+\))$/);
+  if (!match || !match[1]) {
+    return null;
+  }
+
+  try {
+    const pattern = match[1].slice(1, -1);
+    return new RegExp(pattern);
+  } catch {
+    return null;
+  }
+}

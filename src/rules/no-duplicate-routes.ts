@@ -9,6 +9,12 @@ import { extractLiteralPath, isValidPath } from '../utils/path-extractor.js';
 import { frameworkDetector, type FrameworkContext } from '../utils/framework-detector.js';
 import { globalRouterTracker } from '../utils/router-tracker.js';
 import { joinPaths } from '../utils/path-utils.js';
+import { 
+  normalizePathWithLevel, 
+  detectPathConflict, 
+  ConflictType,
+  type NormalizationLevel 
+} from '../utils/path-normalizer.js';
 
 /**
  * Rule options interface
@@ -20,6 +26,12 @@ export interface RuleOptions {
   maxRouterDepth?: number;
   /** Enable debug logging */
   debug?: boolean;
+  /** Path normalization configuration */
+  pathNormalization?: {
+    level?: NormalizationLevel;
+    warnOnStaticVsDynamic?: boolean;
+    preserveConstraints?: boolean;
+  };
 }
 
 /**
@@ -43,7 +55,7 @@ const createRule = ESLintUtils.RuleCreator(
   (name) => `https://github.com/user/eslint-plugin-route-guard/blob/main/docs/rules/${name}.md`
 );
 
-export default createRule<[RuleOptions], 'duplicateRoute'>({
+export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>({
   name: 'no-duplicate-routes',
   meta: {
     type: 'problem',
@@ -52,6 +64,7 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
     },
     messages: {
       duplicateRoute: 'Duplicate route: {{method}} {{path}}\n  First defined: {{firstLocation}}\n  Also defined here',
+      conflictingRoute: 'Conflicting route: {{method}} {{path}}\n  Conflict type: {{conflictType}}\n  First defined: {{firstLocation}}\n  {{conflictMessage}}',
     },
     schema: [
       {
@@ -69,16 +82,47 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
           debug: {
             type: 'boolean',
           },
+          pathNormalization: {
+            type: 'object',
+            properties: {
+              level: {
+                type: 'number',
+                enum: [0, 1, 2],
+              },
+              warnOnStaticVsDynamic: {
+                type: 'boolean',
+              },
+              preserveConstraints: {
+                type: 'boolean',
+              },
+            },
+            additionalProperties: false,
+          },
         },
         additionalProperties: false,
       },
     ],
   },
-  defaultOptions: [{ debug: false, maxRouterDepth: 5 }],
+  defaultOptions: [{ 
+    debug: false, 
+    maxRouterDepth: 5,
+    pathNormalization: {
+      level: 1,
+      warnOnStaticVsDynamic: true,
+      preserveConstraints: false,
+    },
+  }],
   create(context) {
     const options = context.options[0] || {};
     const debug = options.debug || false;
     const maxRouterDepth = options.maxRouterDepth || 5;
+    const pathNormalizationConfig = options.pathNormalization || {
+      level: 1,
+      warnOnStaticVsDynamic: true,
+      preserveConstraints: false,
+    };
+    const normalizationLevel = pathNormalizationConfig.level ?? 1;
+    const warnOnConflicts = pathNormalizationConfig.warnOnStaticVsDynamic ?? true;
     
     // Generate unique lint ID for this run
     const lintId = `${Date.now()}-${Math.random()}`;
@@ -228,10 +272,16 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
         }
       }
 
+      const normalizedPath = normalizePathWithLevel(
+        effectivePath,
+        normalizationLevel,
+        pathNormalizationConfig.preserveConstraints
+      );
+
       const loc = node.loc;
       const route: RouteRegistration = {
         method,
-        path: effectivePath,
+        path: normalizedPath,
         file: filename,
         line: loc.start.line,
         column: loc.start.column,
@@ -239,26 +289,43 @@ export default createRule<[RuleOptions], 'duplicateRoute'>({
         framework: frameworkContext?.type,
       };
 
-      debugLog(`Registering route: ${method} ${effectivePath} at ${filename}:${route.line}:${route.column}`);
+      debugLog(`Registering route: ${method} ${effectivePath} (normalized: ${normalizedPath}) at ${filename}:${route.line}:${route.column}`);
 
       const existingRoute = globalTracker.register(route);
       
       if (existingRoute) {
         const firstLocation = `${existingRoute.file}:${existingRoute.line}:${existingRoute.column}`;
         
-        debugLog(`DUPLICATE DETECTED: ${method} ${effectivePath}`);
+        const conflict = detectPathConflict(effectivePath, existingRoute.path, normalizationLevel);
+        
+        debugLog(`DUPLICATE/CONFLICT DETECTED: ${method} ${effectivePath}`);
         debugLog(`  First: ${firstLocation}`);
         debugLog(`  Second: ${filename}:${route.line}:${route.column}`);
+        debugLog(`  Conflict type: ${conflict.type}`);
 
-        context.report({
-          node,
-          messageId: 'duplicateRoute',
-          data: {
-            method,
-            path: effectivePath,
-            firstLocation,
-          },
-        });
+        if (conflict.type === ConflictType.EXACT_DUPLICATE || conflict.type === ConflictType.PARAM_NAME_CONFLICT) {
+          context.report({
+            node,
+            messageId: 'duplicateRoute',
+            data: {
+              method,
+              path: effectivePath,
+              firstLocation,
+            },
+          });
+        } else if (warnOnConflicts && conflict.type !== ConflictType.NONE) {
+          context.report({
+            node,
+            messageId: 'conflictingRoute',
+            data: {
+              method,
+              path: effectivePath,
+              conflictType: conflict.type,
+              firstLocation,
+              conflictMessage: conflict.message,
+            },
+          });
+        }
       }
     }
 
