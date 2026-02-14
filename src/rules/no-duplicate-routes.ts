@@ -15,6 +15,12 @@ import {
   ConflictType,
   type NormalizationLevel 
 } from '../utils/path-normalizer.js';
+import { 
+  extractControllerPrefix, 
+  extractMethodRoutes, 
+  isNestJSController 
+} from '../utils/nestjs-detector.js';
+import { matchesGlobPatterns } from '../utils/glob-matcher.js';
 
 /**
  * Rule options interface
@@ -32,6 +38,18 @@ export interface RuleOptions {
     warnOnStaticVsDynamic?: boolean;
     preserveConstraints?: boolean;
   };
+  /** NestJS-specific options */
+  nestjs?: {
+    globalPrefix?: string;
+  };
+  /** Glob patterns to ignore */
+  ignorePatterns?: string[];
+  /** Glob patterns to include (only check these) */
+  includePatterns?: string[];
+  /** HTTP methods to ignore */
+  ignoreMethods?: string[];
+  /** Report severity ('error' or 'warn') */
+  severity?: 'error' | 'warn';
 }
 
 /**
@@ -98,6 +116,37 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
             },
             additionalProperties: false,
           },
+          nestjs: {
+            type: 'object',
+            properties: {
+              globalPrefix: {
+                type: 'string',
+              },
+            },
+            additionalProperties: false,
+          },
+          ignorePatterns: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+          },
+          includePatterns: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+          },
+          ignoreMethods: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+          },
+          severity: {
+            type: 'string',
+            enum: ['error', 'warn'],
+          },
         },
         additionalProperties: false,
       },
@@ -123,6 +172,11 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
     };
     const normalizationLevel = pathNormalizationConfig.level ?? 1;
     const warnOnConflicts = pathNormalizationConfig.warnOnStaticVsDynamic ?? true;
+    const nestjsGlobalPrefix = options.nestjs?.globalPrefix;
+    const ignorePatterns = options.ignorePatterns || [];
+    const includePatterns = options.includePatterns || [];
+    const ignoreMethods = (options.ignoreMethods || []).map(m => m.toUpperCase());
+    const severity = options.severity || 'error';
     
     // Generate unique lint ID for this run
     const lintId = `${Date.now()}-${Math.random()}`;
@@ -133,6 +187,9 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
     
     // Framework detection context (set in Program visitor)
     let frameworkContext: FrameworkContext | null = null;
+    
+    // Skip this file if it matches ignore patterns
+    let shouldSkipFile = false;
 
     /**
      * Log debug message if debug mode enabled
@@ -244,6 +301,12 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
         return;
       }
 
+      // Check if method should be ignored
+      if (ignoreMethods.includes(method)) {
+        debugLog(`Skipping ignored method: ${method}`);
+        return;
+      }
+
       const firstArg = node.arguments[0];
       if (!firstArg) {
         debugLog(`Skipped route: ${method} - no arguments provided`);
@@ -306,11 +369,13 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
         if (conflict.type === ConflictType.EXACT_DUPLICATE || conflict.type === ConflictType.PARAM_NAME_CONFLICT) {
           context.report({
             node,
-            messageId: 'duplicateRoute',
+            messageId: severity === 'warn' ? 'conflictingRoute' : 'duplicateRoute',
             data: {
               method,
               path: effectivePath,
               firstLocation,
+              conflictType: conflict.type,
+              conflictMessage: conflict.message,
             },
           });
         } else if (warnOnConflicts && conflict.type !== ConflictType.NONE) {
@@ -329,6 +394,100 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
       }
     }
 
+    function processNestJSController(node: TSESTree.ClassDeclaration): void {
+      if (!frameworkContext || frameworkContext.type !== 'nestjs') {
+        return;
+      }
+
+      if (!isNestJSController(node)) {
+        return;
+      }
+
+      const controllerPrefix = extractControllerPrefix(node);
+      if (controllerPrefix === null) {
+        return;
+      }
+
+      debugLog(`NestJS Controller detected with prefix: '${controllerPrefix}'`);
+
+      const routes = extractMethodRoutes(node, controllerPrefix);
+      
+      for (const nestRoute of routes) {
+        // Check if method should be ignored
+        if (ignoreMethods.includes(nestRoute.method)) {
+          debugLog(`Skipping ignored method: ${nestRoute.method}`);
+          continue;
+        }
+
+        let effectivePath = controllerPrefix && nestRoute.path
+          ? joinPaths(controllerPrefix, nestRoute.path)
+          : controllerPrefix || nestRoute.path;
+
+        if (nestjsGlobalPrefix) {
+          effectivePath = joinPaths(nestjsGlobalPrefix, effectivePath);
+          debugLog(`Applied NestJS global prefix '${nestjsGlobalPrefix}': ${effectivePath}`);
+        }
+
+        const normalizedPath = normalizePathWithLevel(
+          effectivePath,
+          normalizationLevel,
+          pathNormalizationConfig.preserveConstraints
+        );
+
+        const loc = nestRoute.node.loc;
+        const route: RouteRegistration = {
+          method: nestRoute.method,
+          path: normalizedPath,
+          file: filename,
+          line: loc.start.line,
+          column: loc.start.column,
+          node: nestRoute.node,
+          framework: 'nestjs',
+        };
+
+        debugLog(`Registering NestJS route: ${route.method} ${effectivePath} (normalized: ${normalizedPath}) at ${filename}:${route.line}:${route.column}`);
+
+        const existingRoute = globalTracker.register(route);
+        
+        if (existingRoute) {
+          const firstLocation = `${existingRoute.file}:${existingRoute.line}:${existingRoute.column}`;
+          
+          const conflict = detectPathConflict(effectivePath, existingRoute.path, normalizationLevel);
+          
+          debugLog(`DUPLICATE/CONFLICT DETECTED: ${route.method} ${effectivePath}`);
+          debugLog(`  First: ${firstLocation}`);
+          debugLog(`  Second: ${filename}:${route.line}:${route.column}`);
+          debugLog(`  Conflict type: ${conflict.type}`);
+
+          if (conflict.type === ConflictType.EXACT_DUPLICATE || conflict.type === ConflictType.PARAM_NAME_CONFLICT) {
+            context.report({
+              node: nestRoute.node,
+              messageId: severity === 'warn' ? 'conflictingRoute' : 'duplicateRoute',
+              data: {
+                method: route.method,
+                path: effectivePath,
+                firstLocation,
+                conflictType: conflict.type,
+                conflictMessage: conflict.message,
+              },
+            });
+          } else if (warnOnConflicts && conflict.type !== ConflictType.NONE) {
+            context.report({
+              node: nestRoute.node,
+              messageId: 'conflictingRoute',
+              data: {
+                method: route.method,
+                path: effectivePath,
+                conflictType: conflict.type,
+                firstLocation,
+                conflictMessage: conflict.message,
+              },
+            });
+          }
+        }
+      }
+    }
+
     return {
       Program(node) {
         globalTracker.reset(lintId);
@@ -338,6 +497,20 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
         
         debugLog(`Initialized lint run: ${lintId}`);
         debugLog(`Processing file: ${filename}`);
+        
+        // Check ignore patterns
+        if (ignorePatterns.length > 0 && matchesGlobPatterns(filename, ignorePatterns)) {
+          shouldSkipFile = true;
+          debugLog(`File matches ignore patterns, skipping: ${filename}`);
+          return;
+        }
+        
+        // Check include patterns
+        if (includePatterns.length > 0 && !matchesGlobPatterns(filename, includePatterns)) {
+          shouldSkipFile = true;
+          debugLog(`File does not match include patterns, skipping: ${filename}`);
+          return;
+        }
         
         // Detect framework
         frameworkContext = frameworkDetector.detect(node, options, filename, debug);
@@ -349,19 +522,28 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
         }
       },
 
+      ClassDeclaration(node) {
+        if (shouldSkipFile) return;
+        processNestJSController(node);
+      },
+
       VariableDeclarator(node) {
+        if (shouldSkipFile) return;
         processRouterCreation(node);
       },
 
       ExportNamedDeclaration(node) {
+        if (shouldSkipFile) return;
         processExportDeclaration(node);
       },
 
       ImportDeclaration(node) {
+        if (shouldSkipFile) return;
         processImportDeclaration(node);
       },
 
       CallExpression(node) {
+        if (shouldSkipFile) return;
         processPrefixApplication(node);
         processRouteCall(node);
       },
