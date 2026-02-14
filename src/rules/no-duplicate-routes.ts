@@ -1,6 +1,22 @@
 /**
  * ESLint Rule: no-duplicate-routes
- * Detects duplicate route definitions across files
+ * 
+ * Detects duplicate and conflicting route definitions across files in Express,
+ * Fastify, and NestJS applications. Supports router prefixes, path normalization,
+ * and cross-file route tracking.
+ * 
+ * @module rules/no-duplicate-routes
+ * @since 0.1.0
+ * 
+ * @example
+ * // Detects duplicate routes
+ * app.get('/users', handler1);
+ * app.get('/users', handler2); // Error: Duplicate route
+ * 
+ * @example
+ * // Detects conflicting parameterized routes
+ * app.get('/users/:id', handler1);
+ * app.get('/users/:userId', handler2); // Error: Conflicting route
  */
 
 import { ESLintUtils, TSESTree } from '@typescript-eslint/utils';
@@ -23,37 +39,43 @@ import {
 import { matchesGlobPatterns } from '../utils/glob-matcher.js';
 
 /**
- * Rule options interface
+ * Rule options interface.
+ * 
+ * Configures how the rule detects and reports duplicate routes.
  */
 export interface RuleOptions {
-  /** Manual framework override */
+  /** Manual framework override (auto-detected by default) */
   framework?: 'express' | 'fastify' | 'nestjs' | 'generic';
-  /** Maximum router nesting depth */
+  /** Maximum router nesting depth to track */
   maxRouterDepth?: number;
-  /** Enable debug logging */
+  /** Enable debug logging to console */
   debug?: boolean;
   /** Path normalization configuration */
   pathNormalization?: {
+    /** Normalization level (0=none, 1=params, 2=params+optional) */
     level?: NormalizationLevel;
+    /** Warn when static and dynamic paths might conflict */
     warnOnStaticVsDynamic?: boolean;
+    /** Preserve regex constraints in normalized paths */
     preserveConstraints?: boolean;
   };
   /** NestJS-specific options */
   nestjs?: {
+    /** Global prefix applied to all routes */
     globalPrefix?: string;
   };
   /** Glob patterns to ignore */
   ignorePatterns?: string[];
-  /** Glob patterns to include (only check these) */
+  /** Glob patterns to include (only check these files) */
   includePatterns?: string[];
   /** HTTP methods to ignore */
   ignoreMethods?: string[];
-  /** Report severity ('error' or 'warn') */
+  /** Report severity */
   severity?: 'error' | 'warn';
 }
 
 /**
- * HTTP methods to detect
+ * HTTP methods supported for route detection.
  */
 const HTTP_METHODS = new Set([
   'get',
