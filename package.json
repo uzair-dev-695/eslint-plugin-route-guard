@@ -14,16 +14,16 @@
     "duplicate-detection",
     "linting"
   ],
-  "author": "",
+  "author": "Uzair Kazi",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/eslint-plugin-route-guard.git"
+    "url": "https://github.com/uzair-dev-695/eslint-plugin-route-guard.git"
   },
   "bugs": {
-    "url": "https://github.com/user/eslint-plugin-route-guard/issues"
+    "url": "https://github.com/uzair-dev-695/eslint-plugin-route-guard/issues"
   },
-  "homepage": "https://github.com/user/eslint-plugin-route-guard#readme",
+  "homepage": "https://github.com/uzair-dev-695/eslint-plugin-route-guard#readme",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

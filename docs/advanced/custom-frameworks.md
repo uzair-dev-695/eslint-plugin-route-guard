@@ -168,7 +168,7 @@ server.register(plugin, { prefix: '/api' });
 
 Open a GitHub issue requesting support for your framework:
 
-https://github.com/user/eslint-plugin-route-guard/issues
+https://github.com/uzair-dev-695/eslint-plugin-route-guard/issues
 
 Include:
 - Framework name and version

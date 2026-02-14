@@ -34,7 +34,7 @@ This project follows the [Contributor Covenant Code of Conduct](../CODE_OF_CONDU
 
 Look for issues labeled `good first issue` or `help wanted`:
 
-https://github.com/user/eslint-plugin-route-guard/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22
+https://github.com/uzair-dev-695/eslint-plugin-route-guard/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22
 
 ## Development Setup
 
@@ -48,7 +48,7 @@ https://github.com/user/eslint-plugin-route-guard/issues?q=is%3Aissue+is%3Aopen+
 
 1. **Fork the repository**
 
-   Click "Fork" on GitHub: https://github.com/user/eslint-plugin-route-guard
+   Click "Fork" on GitHub: https://github.com/uzair-dev-695/eslint-plugin-route-guard
 
 2. **Clone your fork**
 
@@ -402,7 +402,7 @@ Include:
 - **Configuration:** Your ESLint config
 - **Error messages:** Full error output
 
-Use the [Bug Report template](https://github.com/user/eslint-plugin-route-guard/issues/new?template=bug_report.md).
+Use the [Bug Report template](https://github.com/uzair-dev-695/eslint-plugin-route-guard/issues/new?template=bug_report.md).
 
 ### Feature Requests
 
@@ -413,7 +413,7 @@ Include:
 - **Alternatives:** What else have you considered?
 - **Examples:** Code samples showing the feature
 
-Use the [Feature Request template](https://github.com/user/eslint-plugin-route-guard/issues/new?template=feature_request.md).
+Use the [Feature Request template](https://github.com/uzair-dev-695/eslint-plugin-route-guard/issues/new?template=feature_request.md).
 
 ### Questions
 
@@ -426,8 +426,8 @@ Use the [Feature Request template](https://github.com/user/eslint-plugin-route-g
 
 - **Documentation:** [docs/](../docs/)
 - **Examples:** [examples/](../examples/)
-- **Issues:** https://github.com/user/eslint-plugin-route-guard/issues
-- **Discussions:** https://github.com/user/eslint-plugin-route-guard/discussions
+- **Issues:** https://github.com/uzair-dev-695/eslint-plugin-route-guard/issues
+- **Discussions:** https://github.com/uzair-dev-695/eslint-plugin-route-guard/discussions
 
 ## License
 

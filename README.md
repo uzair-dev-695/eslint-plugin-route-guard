@@ -1,8 +1,8 @@
 # eslint-plugin-route-guard
 
 [![npm version](https://img.shields.io/npm/v/eslint-plugin-route-guard.svg)](https://www.npmjs.com/package/eslint-plugin-route-guard)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/user/eslint-plugin-route-guard/ci.yml?branch=main)](https://github.com/user/eslint-plugin-route-guard/actions)
-[![Coverage](https://img.shields.io/codecov/c/github/user/eslint-plugin-route-guard)](https://codecov.io/gh/user/eslint-plugin-route-guard)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/uzair-dev-695/eslint-plugin-route-guard/ci.yml?branch=main)](https://github.com/uzair-dev-695/eslint-plugin-route-guard/actions)
+[![Coverage](https://img.shields.io/codecov/c/github/uzair-dev-695/eslint-plugin-route-guard)](https://codecov.io/gh/uzair-dev-695/eslint-plugin-route-guard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/node/v/eslint-plugin-route-guard.svg)](https://nodejs.org)
 

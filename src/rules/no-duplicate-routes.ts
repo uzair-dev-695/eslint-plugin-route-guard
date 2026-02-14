@@ -92,7 +92,7 @@ const HTTP_METHODS = new Set([
  * Create rule with TypeScript utils
  */
 const createRule = ESLintUtils.RuleCreator(
-  (name) => `https://github.com/user/eslint-plugin-route-guard/blob/main/docs/rules/${name}.md`
+  (name) => `https://github.com/uzair-dev-695/eslint-plugin-route-guard/blob/main/docs/rules/${name}.md`
 );
 
 export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>({
