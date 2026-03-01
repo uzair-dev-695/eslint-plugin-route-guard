@@ -567,6 +567,14 @@ export default createRule<[RuleOptions], 'duplicateRoute' | 'conflictingRoute'>(
       CallExpression(node) {
         if (shouldSkipFile) return;
         processPrefixApplication(node);
+        
+        // For NestJS, routes are ONLY defined via decorators on controller methods
+        // Skip processRouteCall to avoid detecting HTTP client calls in services
+        // (e.g., httpClient.get(), axios.post(), etc.)
+        if (frameworkContext?.type === 'nestjs') {
+          return;
+        }
+        
         processRouteCall(node);
       },
     };

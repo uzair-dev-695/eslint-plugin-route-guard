@@ -487,6 +487,52 @@ export class AdminUsersController {}
 - Requires `@typescript-eslint/parser`
 - More static than Express/Fastify (better detection accuracy)
 
+### Service Classes Are Ignored
+
+**Important:** The plugin ONLY detects routes in controller classes (classes with `@Controller` decorator). Service classes are completely ignored, even if they make HTTP client calls.
+
+```typescript
+// ✅ This service is IGNORED - no route detection
+@Injectable()
+export class UsersService {
+  constructor(private httpClient: HttpClient) {}
+  
+  async fetchExternalUsers() {
+    // These HTTP calls are NOT detected as routes
+    return this.httpClient.get('/external/api/users');
+  }
+  
+  async createExternalUser(data: any) {
+    // This is also ignored
+    return this.httpClient.post('/external/api/users', data);
+  }
+}
+
+// ✅ Only THIS controller is checked for routes
+@Controller('users')
+export class UsersController {
+  constructor(private usersService: UsersService) {}
+  
+  @Get()  // ✅ This IS detected as a route
+  async findAll() {
+    // Service call inside controller is fine
+    return this.usersService.fetchExternalUsers();
+  }
+}
+```
+
+**Why this matters:**
+- Express/Fastify use imperative routing: `app.get('/path', handler)`
+- NestJS uses declarative routing: `@Get('/path')` on controller methods
+- Service HTTP client calls (`httpClient.get()`, `axios.post()`) look like Express routes but are NOT
+- The plugin correctly distinguishes between these patterns
+
+**Supported service patterns (all ignored):**
+- `@Injectable()` classes with HTTP client calls
+- Plain classes with HTTP method calls
+- Service-to-service method calls
+- Any HTTP library calls inside non-controller classes (axios, fetch, etc.)
+
 ### Guards, Interceptors, and Pipes
 
 ```typescript

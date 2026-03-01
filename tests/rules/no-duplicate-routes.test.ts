@@ -878,4 +878,254 @@ describe('no-duplicate-routes', () => {
       });
     });
   });
+
+  describe('NestJS Framework', () => {
+    describe('Controller Route Detection', () => {
+      it('detects duplicate routes in NestJS controllers', () => {
+        ruleTester.run('nestjs-controller-duplicates', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import { Controller, Get } from '@nestjs/common';
+                
+                @Controller('users')
+                export class UsersController {
+                  @Get(':id')
+                  findOne() {}
+                  
+                  @Get(':id')
+                  findOneAgain() {}
+                }
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('allows different routes in controller', () => {
+        ruleTester.run('nestjs-controller-different-routes', rule, {
+          valid: [
+            {
+              code: `
+                import { Controller, Get, Post } from '@nestjs/common';
+                
+                @Controller('users')
+                export class UsersController {
+                  @Get()
+                  findAll() {}
+                  
+                  @Get(':id')
+                  findOne() {}
+                  
+                  @Post()
+                  create() {}
+                }
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+    });
+
+    describe('Service Classes - Should NOT Detect Routes', () => {
+      it('ignores HTTP client calls in service classes', () => {
+        ruleTester.run('nestjs-service-http-client', rule, {
+          valid: [
+            {
+              code: `
+                import { Injectable } from '@nestjs/common';
+                import { HttpService } from '@nestjs/axios';
+                
+                @Injectable()
+                export class UsersService {
+                  constructor(private httpService: HttpService) {}
+                  
+                  async getUsers() {
+                    // This should NOT be detected as a route
+                    return this.httpService.get('/api/users').toPromise();
+                  }
+                  
+                  async getUserById(id: string) {
+                    // This should NOT be detected as a route
+                    return this.httpService.get(\`/api/users/\${id}\`).toPromise();
+                  }
+                  
+                  async createUser(data: any) {
+                    // This should NOT be detected as a route
+                    return this.httpService.post('/api/users', data).toPromise();
+                  }
+                }
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+
+      it('ignores service method calls', () => {
+        ruleTester.run('nestjs-service-calls', rule, {
+          valid: [
+            {
+              code: `
+                import { Injectable } from '@nestjs/common';
+                
+                @Injectable()
+                export class UsersService {
+                  async findAll() {
+                    return [];
+                  }
+                }
+                
+                @Injectable()
+                export class PostsService {
+                  constructor(private usersService: UsersService) {}
+                  
+                  async getPostsWithUsers() {
+                    // Service calling another service - should NOT be detected
+                    const users = await this.usersService.findAll();
+                    return users;
+                  }
+                }
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+
+      it('ignores axios calls in services', () => {
+        ruleTester.run('nestjs-service-axios', rule, {
+          valid: [
+            {
+              code: `
+                import { Injectable } from '@nestjs/common';
+                import axios from 'axios';
+                
+                @Injectable()
+                export class ExternalApiService {
+                  async fetchData() {
+                    // These should NOT be detected as routes
+                    const response1 = await axios.get('/external/api/data');
+                    const response2 = await axios.post('/external/api/submit', {});
+                    return [response1, response2];
+                  }
+                }
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+
+      it('ignores plain class HTTP calls (no decorator)', () => {
+        ruleTester.run('nestjs-plain-class', rule, {
+          valid: [
+            {
+              code: `
+                export class ApiClient {
+                  async get(path: string) {
+                    return fetch(path).then(r => r.json());
+                  }
+                  
+                  async post(path: string, data: any) {
+                    return fetch(path, { method: 'POST', body: JSON.stringify(data) });
+                  }
+                }
+                
+                const client = new ApiClient();
+                client.get('/api/users');
+                client.post('/api/users', {});
+              `,
+            },
+          ],
+          invalid: [],
+        });
+      });
+    });
+
+    describe('Mixed Controller and Service', () => {
+      it('detects controller routes but ignores service HTTP calls in same file', () => {
+        ruleTester.run('nestjs-mixed-controller-service', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import { Controller, Get, Injectable } from '@nestjs/common';
+                import { HttpService } from '@nestjs/axios';
+                
+                @Injectable()
+                export class ApiService {
+                  constructor(private http: HttpService) {}
+                  
+                  // This should be IGNORED (service HTTP call)
+                  async externalCall() {
+                    return this.http.get('/external/api').toPromise();
+                  }
+                }
+                
+                @Controller('users')
+                export class UsersController {
+                  constructor(private apiService: ApiService) {}
+                  
+                  // This SHOULD be detected
+                  @Get(':id')
+                  findOne() {
+                    return this.apiService.externalCall();
+                  }
+                  
+                  // This SHOULD be detected as duplicate
+                  @Get(':id')
+                  findOneDuplicate() {
+                    return {};
+                  }
+                }
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+    });
+
+    describe('Express/Fastify Regression Tests', () => {
+      it('still detects Express routes', () => {
+        ruleTester.run('express-still-works', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import express from 'express';
+                const app = express();
+                
+                app.get('/users', handler);
+                app.get('/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+
+      it('still detects Fastify routes', () => {
+        ruleTester.run('fastify-still-works', rule, {
+          valid: [],
+          invalid: [
+            {
+              code: `
+                import Fastify from 'fastify';
+                const fastify = Fastify();
+                
+                fastify.get('/users', handler);
+                fastify.get('/users', handler);
+              `,
+              errors: [{ messageId: 'duplicateRoute' }],
+            },
+          ],
+        });
+      });
+    });
+  });
 });
